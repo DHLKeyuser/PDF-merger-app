@@ -52,7 +52,7 @@ function handleFiles(files) {
 
 function renderFileList() {
   fileList.innerHTML = '';
-  pdfFiles.forEach((f,i) => {
+  pdfFiles.forEach((f, i) => {
     const name = f.name.replace(/\.pdf$/i,'');
     const div  = document.createElement('div');
     div.className = 'file-item';
@@ -65,10 +65,12 @@ function renderFileList() {
     fileList.appendChild(div);
   });
   Sortable.create(fileList, {
-    animation:150, ghostClass:'sortable-ghost', chosenClass:'sortable-chosen',
+    animation: 150,
+    ghostClass: 'sortable-ghost',
+    chosenClass: 'sortable-chosen',
     onEnd: evt => {
-      const [m] = pdfFiles.splice(evt.oldIndex,1);
-      pdfFiles.splice(evt.newIndex,0,m);
+      const [m] = pdfFiles.splice(evt.oldIndex, 1);
+      pdfFiles.splice(evt.newIndex, 0, m);
       renderFileList();
     }
   });
@@ -236,7 +238,7 @@ async function extractFromPDF(file) {
           .map(it=>it.str.trim()).join(' ');
         xx += COL_WIDTHS[i];
       }
-      // VALID_CODES logic (unchanged)
+      // VALID_CODES logic
       const toks = arr[3].split(/\s+/);
       const idx  = toks.findIndex(t=>VALID_CODES.includes(t.toUpperCase()));
       if (idx!==-1) {
@@ -284,7 +286,7 @@ async function generatePDF() {
   const svcSet = new Set(data.rows.map(r=>r[9]).filter(Boolean));
   const svcArr = Array.from(svcSet);
 
-  // new PDF-lib doc
+  // create PDF-lib doc
   const pdfDoc = await PDFLib.PDFDocument.create();
   globalFont   = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
   globalFontB  = await pdfDoc.embedFont(PDFLib.StandardFonts.HelveticaBold);
@@ -293,38 +295,39 @@ async function generatePDF() {
   let page     = pdfDoc.addPage([PAGE_W,PAGE_H]);
   pages.push(page);
 
-  // … (header, table, rows, footers as before) …
+  // … your existing header, table, rows, footers code unchanged …
 
-  // ─── 3-column, paginated QR-Index with transport & barcode ────────────────
+  // ─── 3-column QR-Index (this is the only block I’ve updated) ────────────────
   if (qrEntries.length) {
-    const qrSz     = 60;
-    const rowGap   =  ROW_H*1.5;
-    const titleSz  = 14;
-    const padW     = 6;
-    const labelW   = 100;
-    const blockW   = qrSz + padW*2 + labelW;
-    const totalW   = PAGE_W - LEFT*2;
-    const horizGap = (totalW - blockW*3)/2;
-    const colX     = [ LEFT, LEFT+blockW+horizGap, LEFT+2*(blockW+horizGap) ];
-    const rowsPer  = Math.floor((PAGE_H - ROW_H*4)/(qrSz+rowGap));
-    const perPage  = rowsPer*3;
-    const yStart   = PAGE_H - ROW_H*3;
+    const qrSz     = 60,
+          barcodeH = 40,
+          rowGap   = ROW_H*1.5,
+          titleSz  = 14,
+          padW     = 8,
+          labelW   = 100,
+          blockW   = qrSz + padW*2 + labelW,
+          totalW   = PAGE_W - LEFT*2,
+          horizGap = (totalW - blockW*3)/2,
+          colX     = [ LEFT, LEFT+blockW+horizGap, LEFT+2*(blockW+horizGap) ],
+          rowsPer  = Math.floor((PAGE_H - ROW_H*4)/(qrSz+rowGap)),
+          perPage  = rowsPer*3,
+          yStart   = PAGE_H - ROW_H*3;
 
-    for (let pgIdx=0; pgIdx*perPage<qrEntries.length; pgIdx++) {
+    for (let pageIdx=0; pageIdx*perPage<qrEntries.length; pageIdx++) {
       const idxPg = pdfDoc.addPage([PAGE_W,PAGE_H]);
-      pages.push(idxPg);
-      // title
+
+      // page title
       const qrTitle = 'QR Codes for Scanning';
-      const tW      = globalFontB.widthOfTextAtSize(qrTitle,titleSz);
+      const tW      = globalFontB.widthOfTextAtSize(qrTitle, titleSz);
       drawText(idxPg, qrTitle, (PAGE_W-tW)/2, PAGE_H-ROW_H*1.5, titleSz, globalFontB);
 
-      const chunk = qrEntries.slice(pgIdx*perPage, pgIdx*perPage+perPage);
+      const chunk = qrEntries.slice(pageIdx*perPage, pageIdx*perPage+perPage);
       for (let i=0; i<chunk.length; i++) {
         const { loadingList, dataUrl } = chunk[i];
         const col = i%3, row = Math.floor(i/3);
         const xPos = colX[col], yPos = yStart - row*(qrSz+rowGap);
 
-        // lightly-colored border
+        // border box
         idxPg.drawRectangle({
           x: xPos-padW, y:(yPos-qrSz)-4,
           width: blockW, height: qrSz+8,
@@ -332,7 +335,7 @@ async function generatePDF() {
           borderWidth: 0.7
         });
 
-        // QR image
+        // QR
         const b64qr = dataUrl.split(',')[1];
         const pngQr = await pdfDoc.embedPng(
           Uint8Array.from(atob(b64qr), c=>c.charCodeAt(0))
@@ -345,11 +348,11 @@ async function generatePDF() {
         });
 
         // Transport start (two lines)
-        const te = transportEntries.find(e=>e.loadingList===loadingList);
-        const lineX = xPos + qrSz + 10;
-        const lineY1 = yPos - 10;
-        drawText(idxPg, 'Transport start:', lineX, lineY1, 8, globalFont);
-        drawText(idxPg, te?.transportStart||'', lineX, lineY1-10, 8, globalFont);
+        const te    = transportEntries.find(e=>e.loadingList===loadingList);
+        const textX = xPos + qrSz + 10;
+        const line1Y = yPos - 10;
+        drawText(idxPg, 'Transport start:', textX, line1Y, 8, globalFont);
+        drawText(idxPg, te?.transportStart||'', textX, line1Y-10, 8, globalFont);
 
         // Barcode
         const b64bc = (await generateBarcodeDataUrl(loadingList)).split(',')[1];
@@ -359,12 +362,12 @@ async function generatePDF() {
         const bcX = xPos + qrSz + padW;
         idxPg.drawImage(pngBc, {
           x:      bcX,
-          y:      yPos - qrSz + 5,
+          y:      yPos-qrSz + (qrSz-barcodeH)/2,
           width:  qrSz*1.5,
-          height: 40
+          height: barcodeH
         });
 
-        // Shipment ID below barcode
+        // Shipment ID (bold) below barcode
         drawText(idxPg, loadingList, bcX, yPos-qrSz-5, 8, globalFontB);
       }
     }
